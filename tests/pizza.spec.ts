@@ -16,6 +16,80 @@ test('about page', async ({ page }) => {
   await expect(page.getByRole('main')).toContainText('The secret sauce');
 });
 
+test('login with diner dashboard', async ({ page }) => {
+  await page.route('*/**/api/auth', async (route) => {
+    if(route.request().method() == 'PUT') {
+      expect(route.request().postDataJSON()).toMatchObject({"email":"a@jwt.org","password":"a"});
+      await route.fulfill({ json: {
+        "user": {
+            "id": 1,
+            "name": "a",
+            "email": "a@jwt.org",
+            "roles": [
+                {
+                    "role": "admin"
+                },
+                {
+                    "objectId": 26,
+                    "role": "franchisee"
+                }
+            ]
+        },
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImEiLCJlbWFpbCI6ImFAand0Lm9yZyIsInJvbGVzIjpbeyJyb2xlIjoiYWRtaW4ifV0sImlhdCI6MTc0MDAxNTM2MX0.WzvVM5_9ry2NeUGVQzhWPbm3dk1T-AWibnyDR_TJ8PA"
+    } });
+    }
+    else if(route.request().method() == 'DELETE') {
+      await route.fulfill({ json: {"message":"logout successful"} })
+    }
+  });
+
+  await page.route('*/**/api/order', async (route) => {
+    if(route.request().method() == 'GET') {
+      await route.fulfill({ json: {
+        "dinerId": 1,
+        "orders": [
+            {
+                "id": 3,
+                "franchiseId": 2,
+                "storeId": 1,
+                "date": "2025-02-20T04:09:39.000Z",
+                "items": [
+                    {
+                        "id": 3,
+                        "menuId": 1,
+                        "description": "mndm3",
+                        "price": 0.0001
+                    }
+                ]
+            }
+        ],
+        "page": 1
+    } });
+    }
+  });
+
+  await page.route('*/**/api/franchise', async (route) => {
+    if(route.request().method() == 'GET') {
+      await route.fulfill({ json: [] });
+    }
+  });
+
+  // Log into admin and access diner dashboard
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Login' }).click();
+  await page.getByRole('textbox', { name: 'Email address' }).fill('a@jwt.org');
+  await page.getByRole('textbox', { name: 'Password' }).fill('a');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page.locator('#navbar-dark')).toContainText('Logout', {timeout: 5000});
+  await page.getByRole('link', { name: 'a', exact: true }).click();
+  await expect(page.getByRole('heading')).toContainText('Your pizza kitchen');
+
+  // Check if orders are present
+  await expect(page.locator('tbody')).toContainText('3');
+  await page.getByRole('cell', { name: '₿' }).click();
+  await page.getByRole('cell', { name: '-02-20T04:09:39.000Z' }).click();
+});
+
 test('history page', async ({ page }) => {
   await page.goto('/history');
   await expect(page.getByRole('heading')).toContainText('Mama Rucci, my my');
@@ -421,4 +495,14 @@ test('purchase with login', async ({ page }) => {
 
   // Check balance
   await expect(page.getByText('0.008')).toBeVisible();
+
+  // Verify pizza
+  await page.getByRole('button', { name: 'Verify' }).click();
+  const jwtVerifyText : string = (await page.locator('h3').textContent())!;
+  expect(['valid', 'invalid'].some(text => jwtVerifyText.includes(text))).toBeTruthy();
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  // Order more path
+  await page.getByRole('button', { name: 'Order more' }).click();
+  await expect(page.locator('h2')).toContainText('Awesome is a click away');
 });
