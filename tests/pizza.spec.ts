@@ -1,4 +1,334 @@
 import { test, expect } from 'playwright-test-coverage';
+import {randomText} from './testUtils';
+
+test('not found page', async ({ page }) => {
+  await page.goto('/notfound');
+  await expect(page.getByRole('heading')).toContainText('Oops');
+});
+
+test('docs page', async ({ page }) => {
+  await page.goto('/docs');
+  await expect(page.getByRole('main')).toContainText('JWT Pizza API');
+});
+
+test('about page', async ({ page }) => {
+  await page.goto('/about');
+  await expect(page.getByRole('main')).toContainText('The secret sauce');
+});
+
+test('history page', async ({ page }) => {
+  await page.goto('/history');
+  await expect(page.getByRole('heading')).toContainText('Mama Rucci, my my');
+});
+
+test('create franchise from admin and add store', async ({ page }) => {
+  const franchiseEmail = `fr${randomText(6)}@jwt.org`;
+  const franchiseName = `Franchise ${randomText(6)}`;
+  const franchiseeName = `Franchisee ${randomText(6)}`;
+  const storeName = `Store ${randomText(6)}`;
+
+  await page.route('*/**/api/auth', async (route) => {
+    if(route.request().method() == 'POST') {
+      expect(route.request().postDataJSON()).toMatchObject({"name":franchiseeName,"email":franchiseEmail,"password":"a"});
+      await route.fulfill({ json: {
+        "user": {
+            "name": franchiseeName,
+            "email": franchiseEmail,
+            "roles": [
+                {
+                    "role": "diner"
+                }
+            ],
+            "id": 10
+        },
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJuYW1lIjoiRnJhbmNoaXNlZSBqbW12aWgiLCJlbWFpbCI6ImZycHdmaWg1QGp3dC5vcmciLCJyb2xlcyI6W3sicm9sZSI6ImRpbmVyIn1dLCJpZCI6MTAsImlhdCI6MTc0MDAxNTgwM30.y9a6Omdp1S6hHPtrTqlI4COlu5ycLdflZZ3MypAGvS4"
+      } });
+    }
+    else if(route.request().method() == 'DELETE') {
+      route.fulfill({ json: {"message":"logout successful"} })
+    }
+  });
+
+  await page.goto('/');
+
+  // Create franchise user
+  await page.getByRole('link', { name: 'Register' }).click();
+  await page.getByRole('textbox', { name: 'Full name' }).fill(franchiseeName);
+  await page.getByRole('textbox', { name: 'Email address' }).fill(franchiseEmail);
+  await page.getByRole('textbox', { name: 'Password' }).fill('a');
+  await page.getByRole('button', { name: 'Register' }).click();
+  await expect(page.locator('#navbar-dark')).toContainText('Logout', {timeout: 5000});
+  await page.getByRole('link', { name: 'Logout' }).click();
+  await expect(page.locator('#navbar-dark')).toContainText('Login');
+
+  await page.route('*/**/api/auth', async (route) => {
+    if(route.request().method() == 'PUT') {
+      expect(route.request().postDataJSON()).toMatchObject({"email":"a@jwt.org","password":"a"});
+      await route.fulfill({ json: {
+        "user": {
+            "id": 1,
+            "name": "a",
+            "email": "a@jwt.org",
+            "roles": [
+                {
+                    "role": "admin"
+                }
+            ]
+        },
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImEiLCJlbWFpbCI6ImFAand0Lm9yZyIsInJvbGVzIjpbeyJyb2xlIjoiYWRtaW4ifV0sImlhdCI6MTc0MDAxNTM2MX0.WzvVM5_9ry2NeUGVQzhWPbm3dk1T-AWibnyDR_TJ8PA"
+    } });
+    }
+    else if(route.request().method() == 'DELETE') {
+      await route.fulfill({ json: {"message":"logout successful"} })
+    }
+  });
+
+  await page.route('*/**/api/franchise', async (route) => {
+    if(route.request().method() == 'GET') {
+      await route.fulfill({ json: [] });
+    }
+  });
+
+  // Log into admin and add franchise
+  await page.getByRole('link', { name: 'Login' }).click();
+  await page.getByRole('textbox', { name: 'Email address' }).fill('a@jwt.org');
+  await page.getByRole('textbox', { name: 'Password' }).fill('a');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page.locator('#navbar-dark')).toContainText('Logout');
+  await expect(page.locator('#navbar-dark')).toContainText('Admin');
+  await page.getByRole('link', { name: 'Admin' }).click();
+  await page.getByRole('button', { name: 'Add Franchise' }).click();
+
+  await page.route('*/**/api/franchise', async (route) => {
+    if(route.request().method() == 'GET') {
+      await route.fulfill({ json: [
+        {
+          "id": 26,
+          "name": franchiseName,
+          "admins": [
+              {
+                  "id": 25,
+                  "name": franchiseeName,
+                  "email": franchiseEmail
+              }
+          ],
+          "stores": []
+      }
+      ] });
+    }
+    else if(route.request().method() == 'POST') {
+      expect(route.request().postDataJSON()).toMatchObject({
+        "stores": [],
+        "id": "",
+        "name": franchiseName,
+        "admins": [
+          {
+            "email": franchiseEmail,
+          }
+        ]
+      });
+      await route.fulfill({ json: {
+        "stores": [],
+        "id": 26,
+        "name": franchiseName,
+        "admins": [
+            {
+                "email": franchiseEmail,
+                "id": 25,
+                "name": franchiseeName
+            }
+        ]
+    } })
+    }
+  });
+
+  await page.getByRole('textbox', { name: 'franchise name' }).fill(franchiseName);
+  await page.getByRole('textbox', { name: 'franchisee admin email' }).fill(franchiseEmail);
+  await page.getByRole('button', { name: 'Create' }).click();
+
+  // Ensure franchise was created
+  await expect(page.getByRole('cell', { name: franchiseName })).toBeVisible();
+  await expect(page.getByRole('cell', { name: franchiseeName })).toBeVisible();
+
+  // Log back into franchise user
+  await page.route('*/**/api/auth', async (route) => {
+    if(route.request().method() == 'PUT') {
+      expect(route.request().postDataJSON()).toMatchObject({
+        "email": franchiseEmail,
+        "password": "a"
+      });
+      await route.fulfill({ json: {
+        "user": {
+            "id": 25,
+            "name": franchiseeName,
+            "email": franchiseEmail,
+            "roles": [
+                {
+                    "role": "diner"
+                },
+                {
+                    "objectId": 26,
+                    "role": "franchisee"
+                }
+            ]
+        },
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MjUsIm5hbWUiOiJGcmFuY2hpc2VlIHgyaXoxciIsImVtYWlsIjoiZnJudDlnOXFAand0Lm9yZyIsInJvbGVzIjpbeyJyb2xlIjoiZGluZXIifSx7Im9iamVjdElkIjoyNiwicm9sZSI6ImZyYW5jaGlzZWUifV0sImlhdCI6MTc0MDAxNTM2MX0.pLxcJEolG1HamqvMkOBjfVUg0USrrLhlnCXigkKvJgE"
+    } });
+    }
+    else if(route.request().method() == 'DELETE') {
+      await route.fulfill({ json: {"message":"logout successful"} })
+    }
+  });
+
+  await page.route('*/**/api/franchise/25', async (route) => {
+    if(route.request().method() == 'GET') {
+      await route.fulfill({ json: [
+        {
+            "id": 26,
+            "name": franchiseName,
+            "admins": [
+                {
+                    "id": 25,
+                    "name": franchiseeName,
+                    "email": franchiseEmail
+                }
+            ],
+            "stores": []
+        }
+    ] });
+    }
+  });
+
+  await page.getByRole('link', { name: 'Logout' }).click();
+  await page.getByRole('link', { name: 'Login' }).click();
+  await page.getByRole('textbox', { name: 'Email address' }).fill(franchiseEmail);
+  await page.getByRole('textbox', { name: 'Password' }).fill('a');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page.locator('#navbar-dark')).toContainText('Logout');
+  await expect(page.locator('#navbar-dark')).toContainText('Franchise');
+
+  // Ensure franchise dashboard is active
+  await page.getByLabel('Global').getByRole('link', { name: 'Franchise' }).click();
+  await expect(page.getByRole('button', { name: 'Create store' })).toBeVisible();
+
+  // Add store
+  await page.route('*/**/api/franchise/26/store', async (route) => {
+    if(route.request().method() == 'POST') {
+      expect(route.request().postDataJSON()).toMatchObject({"id":"","name":storeName});
+      await route.fulfill({ json: {"id":11,"franchiseId":26,"name":storeName} });
+    }
+  });
+
+  await page.route('*/**/api/franchise/25', async (route) => {
+    if(route.request().method() == 'GET') {
+      await route.fulfill({ json: [
+        {
+            "id": 26,
+            "name": franchiseName,
+            "admins": [
+                {
+                    "id": 25,
+                    "name": franchiseeName,
+                    "email": franchiseEmail
+                }
+            ],
+            "stores": [
+              {
+                  "id": 11,
+                  "name": storeName,
+                  "totalRevenue": 0
+              }
+          ]
+        }
+    ] });
+    }
+  });
+
+  await page.getByRole('button', { name: 'Create store' }).click();
+  await page.getByRole('textbox', { name: 'store name' }).fill(storeName);
+  await page.getByRole('button', { name: 'Create' }).click();
+
+  // Ensure store was created
+  await expect(page.getByRole('cell', { name: storeName })).toBeVisible();
+
+  // Delete store
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  await page.route('*/**/api/franchise/26/store/11', async (route) => {
+    if(route.request().method() == 'DELETE') {
+      await route.fulfill({ json: {"message":"store deleted"} });
+    }
+  });
+
+  await page.route('*/**/api/franchise/25', async (route) => {
+    if(route.request().method() == 'GET') {
+      await route.fulfill({ json: [
+        {
+            "id": 26,
+            "name": franchiseName,
+            "admins": [
+                {
+                    "id": 25,
+                    "name": franchiseeName,
+                    "email": franchiseEmail
+                }
+            ],
+            "stores": []
+        }
+    ] });
+    }
+  });
+
+  await page.getByRole('button', { name: 'Close' }).click();
+
+  // Log back in as admin
+  await page.route('*/**/api/auth', async (route) => {
+    if(route.request().method() == 'PUT') {
+      expect(route.request().postDataJSON()).toMatchObject({"email":"a@jwt.org","password":"a"});
+      await route.fulfill({ json: {
+        "user": {
+            "id": 1,
+            "name": "a",
+            "email": "a@jwt.org",
+            "roles": [
+                {
+                    "role": "admin"
+                }
+            ]
+        },
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImEiLCJlbWFpbCI6ImFAand0Lm9yZyIsInJvbGVzIjpbeyJyb2xlIjoiYWRtaW4ifV0sImlhdCI6MTc0MDAxNTM2MX0.WzvVM5_9ry2NeUGVQzhWPbm3dk1T-AWibnyDR_TJ8PA"
+    } });
+    }
+    else if(route.request().method() == 'DELETE') {
+      await route.fulfill({ json: {"message":"logout successful"} })
+    }
+  });
+
+  await page.getByRole('link', { name: 'Logout' }).click();
+  await page.getByRole('link', { name: 'Login' }).click();
+  await page.getByRole('textbox', { name: 'Email address' }).fill('a@jwt.org');
+  await page.getByRole('textbox', { name: 'Password' }).fill('a');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page.locator('#navbar-dark')).toContainText('Admin');
+
+  // Delete franchise
+  await page.getByRole('link', { name: 'Admin' }).click();
+  await page.getByRole('row', { name: `${franchiseName} Franchisee` }).getByRole('button').click();
+
+  await page.route('*/**/api/franchise/25', async (route) => {
+    if(route.request().method() == 'GET') {
+      await route.fulfill({ json: [] });
+    }
+  });
+
+  await page.route('*/**/api/franchise/26', async (route) => {
+    if(route.request().method() == 'DELETE') {
+      await route.fulfill({ json: {"message":"franchise deleted"} });
+    }
+  });
+  
+  await page.getByRole('button', { name: 'Close' }).click();
+});
 
 test('purchase with login', async ({ page }) => {
   await page.route('*/**/api/order/menu', async (route) => {
