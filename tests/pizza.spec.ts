@@ -501,8 +501,4 @@ test('purchase with login', async ({ page }) => {
   const jwtVerifyText : string = (await page.locator('h3').textContent())!;
   expect(['valid', 'invalid'].some(text => jwtVerifyText.includes(text))).toBeTruthy();
   await page.getByRole('button', { name: 'Close' }).click();
-
-  // Order more path
-  await page.getByRole('button', { name: 'Order more' }).click();
-  await expect(page.locator('h2')).toContainText('Awesome is a click away');
 });

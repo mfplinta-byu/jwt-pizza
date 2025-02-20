@@ -42,10 +42,6 @@ jobs:
           npx playwright install --with-deps chromium
           npm run test:coverage
 
-      - name: Print coverage
-        run: |
-          echo $(jq '.total.lines.pct' coverage/coverage-summary.json)
-
       - name: Update coverage
         run: |
           coverage=$(jq '.total.lines.pct' coverage/coverage-summary.json)
